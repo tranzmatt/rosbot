@@ -1,18 +1,13 @@
 # TurtleBot4 sim (headless) + rosbridge
 # ROS2 Jazzy + Gazebo Harmonic + turtlebot4_simulator
-#
-# Runs gz sim server-only — no display needed on DGX.
-# Connect GUI from laptop: gz sim -g
 
 FROM ros:jazzy-ros-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Add OSRF Gazebo repo (required for gz-harmonic on Ubuntu Noble)
+# Add OSRF Gazebo repo
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    lsb-release \
-    gnupg2 \
+    wget lsb-release gnupg2 \
     && wget https://packages.osrfoundation.org/gazebo.gpg \
        -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] \
@@ -21,22 +16,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        > /etc/apt/sources.list.d/gazebo-stable.list \
     && rm -rf /var/lib/apt/lists/*
 
-# Install gz-harmonic + turtlebot4 sim + rosbridge
+# Install gz-harmonic + turtlebot4 sim + ros2 control + rosbridge
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gz-harmonic \
     ros-jazzy-turtlebot4-simulator \
     ros-jazzy-turtlebot4-navigation \
     ros-jazzy-rosbridge-suite \
     ros-jazzy-slam-toolbox \
+    ros-jazzy-gz-ros2-control \
+    ros-jazzy-ros2-control \
+    ros-jazzy-ros2-controllers \
     && rm -rf /var/lib/apt/lists/*
 
 ENV ROS_DOMAIN_ID=0
 ENV TURTLEBOT4_MODEL=standard
+# Tell Ogre/gz not to attempt display rendering
+ENV GZ_HEADLESS_RENDERING=1
+ENV MESA_GL_VERSION_OVERRIDE=3.3
 
 COPY sim_entrypoint.sh /sim_entrypoint.sh
 RUN chmod +x /sim_entrypoint.sh
 
-# rosbridge WebSocket + Gazebo server port for remote GUI
 EXPOSE 9090 11345
 
 ENTRYPOINT ["/sim_entrypoint.sh"]
