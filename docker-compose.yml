@@ -6,6 +6,8 @@ version: "3.8"
 #   ./rosbot.sh sim       # TurtleBot4 sim (headless) + rosbot server
 #   ./rosbot.sh real      # Point at real TurtleBot4 + rosbot server
 #   ./rosbot.sh down      # Stop everything
+#
+# Configuration: copy .env.example to .env and edit
 
 services:
 
@@ -35,14 +37,15 @@ services:
     image: rosbot/server:latest
     profiles: ["sim", "real"]
     ports:
-      - "8082:8082"
+      - "${PORT:-8082}:${PORT:-8082}"
     environment:
-      - LLM_BASE_URL=http://host-gateway:8001/v1
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host-gateway:8001/v1}
       - LLM_MODEL=${LLM_MODEL:-meta-llama/Llama-3.3-70B-Instruct}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ROSBRIDGE_URL=${ROSBRIDGE_URL:-ws://sim:9090}
       - TWIST_STAMPED=${TWIST_STAMPED:-false}
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
-      - PORT=8082
+      - PORT=${PORT:-8082}
     extra_hosts:
       - "host-gateway:host-gateway"
     depends_on:
