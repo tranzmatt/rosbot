@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install gz-harmonic + turtlebot4 sim + ros2 control + rosbridge
+# mesa-utils + libgl1-mesa-swrast provide software OpenGL for headless rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gz-harmonic \
     ros-jazzy-turtlebot4-simulator \
@@ -26,11 +27,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-gz-ros2-control \
     ros-jazzy-ros2-control \
     ros-jazzy-ros2-controllers \
+    libgl1-mesa-swrast \
+    libgl1-mesa-glx \
+    mesa-utils \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 ENV ROS_DOMAIN_ID=0
 ENV TURTLEBOT4_MODEL=standard
-# Tell Ogre/gz not to attempt display rendering
+# Software rendering — no GPU/display needed for the GUI process
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV GALLIUM_DRIVER=softpipe
+ENV QT_QPA_PLATFORM=offscreen
 ENV GZ_HEADLESS_RENDERING=1
 ENV MESA_GL_VERSION_OVERRIDE=3.3
 
