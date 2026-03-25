@@ -6,10 +6,10 @@ source /opt/ros/jazzy/setup.bash
 WORLD="${TB4_WORLD:-warehouse}"
 MODEL="${TURTLEBOT4_MODEL:-standard}"
 
-echo "[rosbot] Starting TurtleBot4 sim (headless)"
+echo "[rosbot] Starting TurtleBot4 sim (headless server)"
 echo "[rosbot] World: ${WORLD}  Model: ${MODEL}"
 
-# Find the world file
+# Validate world file exists
 WORLD_FILE="/opt/ros/jazzy/share/turtlebot4_gz_bringup/worlds/${WORLD}.sdf"
 if [ ! -f "$WORLD_FILE" ]; then
     echo "[rosbot] ERROR: World file not found: $WORLD_FILE"
@@ -18,42 +18,32 @@ if [ ! -f "$WORLD_FILE" ]; then
     exit 1
 fi
 
-# Run gz sim server only (-s = server, -r = run immediately, no GUI)
-echo "[rosbot] Starting gz sim server with ${WORLD}.sdf..."
-GZ_HEADLESS_RENDERING=1 gz sim -s -r "$WORLD_FILE" &
-GZ_PID=$!
+# Launch full TB4 sim via the proper launch file
+# headless:=True suppresses GUI, server:=True runs gz sim -s
+# GZ_HEADLESS_RENDERING=1 tells Ogre not to attempt display output
+echo "[rosbot] Launching turtlebot4_gz.launch.py (headless)..."
+ros2 launch turtlebot4_gz_bringup turtlebot4_gz.launch.py \
+    headless:=True \
+    model:=${MODEL} \
+    world:=${WORLD} &
 
-echo "[rosbot] Waiting for Gazebo server to initialize..."
-sleep 8
+LAUNCH_PID=$!
 
-# Check gz server is still running
-if ! kill -0 $GZ_PID 2>/dev/null; then
-    echo "[rosbot] ERROR: Gazebo server exited unexpectedly"
+echo "[rosbot] Waiting for sim to initialize (~25s)..."
+sleep 25
+
+# Check sim is still alive
+if ! kill -0 $LAUNCH_PID 2>/dev/null; then
+    echo "[rosbot] ERROR: Sim launch exited unexpectedly"
     exit 1
 fi
-echo "[rosbot] Gazebo server running (pid $GZ_PID)"
 
-# Spawn the TurtleBot4 into the running world
-echo "[rosbot] Spawning TurtleBot4 (${MODEL})..."
-ros2 launch turtlebot4_gz_bringup turtlebot4_spawn.launch.py \
-    model:=${MODEL} &
-SPAWN_PID=$!
-
-sleep 15
-
-# Launch ROS-Gazebo bridge
-echo "[rosbot] Starting ROS-Gazebo bridge..."
-ros2 launch turtlebot4_gz_bringup ros_gz_bridge.launch.py \
-    model:=${MODEL} &
-
-sleep 5
-
-# Launch turtlebot4 nodes (HMI, etc)
-echo "[rosbot] Starting TurtleBot4 nodes..."
-ros2 launch turtlebot4_gz_bringup turtlebot4_nodes.launch.py \
-    model:=${MODEL} &
-
-sleep 5
+# Check for cmd_vel
+if ros2 topic list 2>/dev/null | grep -q "/cmd_vel"; then
+    echo "[rosbot] ✓ /cmd_vel found — sim is ready"
+else
+    echo "[rosbot] WARNING: /cmd_vel not found yet — sim may still be loading"
+fi
 
 echo "[rosbot] Starting rosbridge_server on :9090..."
 exec ros2 launch rosbridge_server rosbridge_websocket_launch.xml
