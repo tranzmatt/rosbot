@@ -56,6 +56,7 @@ services:
       - ROS_DOMAIN_ID=0
       - TURTLEBOT4_MODEL=${TURTLEBOT4_MODEL:-standard}
       - TB4_WORLD=${TB4_WORLD:-empty}
+      - QT_QPA_PLATFORM=offscreen
     networks:
       - rosbot
     restart: unless-stopped
