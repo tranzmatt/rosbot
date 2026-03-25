@@ -1,0 +1,58 @@
+version: "3.8"
+
+# RosBot stack — runs entirely on DGX (172.32.1.250)
+#
+# Usage:
+#   ./rosbot.sh sim       # TurtleBot4 sim (headless) + rosbot server
+#   ./rosbot.sh real      # Point at real TurtleBot4 + rosbot server
+#   ./rosbot.sh down      # Stop everything
+
+services:
+
+  # TurtleBot4 Gazebo Harmonic sim (headless server, no display needed)
+  sim:
+    build:
+      context: .
+      dockerfile: Dockerfile.sim
+    image: rosbot/sim:latest
+    profiles: ["sim"]
+    ports:
+      - "9090:9090"       # rosbridge WebSocket
+      - "11345:11345"     # Gazebo server port (for remote GUI connection)
+    environment:
+      - ROS_DOMAIN_ID=0
+      - TURTLEBOT4_MODEL=${TURTLEBOT4_MODEL:-standard}
+      - TB4_WORLD=${TB4_WORLD:-empty}
+    networks:
+      - rosbot
+    restart: unless-stopped
+
+  # rosbot server (FastAPI + Whisper, points at vLLM on host)
+  rosbot:
+    build:
+      context: .
+      dockerfile: Dockerfile.rosbot
+    image: rosbot/server:latest
+    profiles: ["sim", "real"]
+    ports:
+      - "8082:8082"
+    environment:
+      - LLM_BASE_URL=http://host-gateway:8001/v1
+      - LLM_MODEL=${LLM_MODEL:-meta-llama/Llama-3.3-70B-Instruct}
+      - ROSBRIDGE_URL=${ROSBRIDGE_URL:-ws://sim:9090}
+      - TWIST_STAMPED=${TWIST_STAMPED:-false}
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - PORT=8082
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    depends_on:
+      sim:
+        condition: service_started
+        required: false
+    networks:
+      - rosbot
+    restart: unless-stopped
+
+networks:
+  rosbot:
+    driver: bridge
