@@ -1,15 +1,50 @@
 version: "3.8"
 
-# RosBot stack — runs entirely on DGX (172.32.1.250)
+# RosBot stack
 #
 # Usage:
-#   ./rosbot.sh sim       # TurtleBot4 sim (headless) + rosbot server
-#   ./rosbot.sh real      # Point at real TurtleBot4 + rosbot server
+#   ./rosbot.sh sim       # vLLM + TurtleBot4 sim (headless) + rosbot server
+#   ./rosbot.sh real      # vLLM + rosbot server → real TurtleBot4
 #   ./rosbot.sh down      # Stop everything
 #
 # Configuration: copy .env.example to .env and edit
 
 services:
+
+  # vLLM — local LLM inference server
+  vllm:
+    image: vllm/vllm-openai:latest
+    profiles: ["sim", "real"]
+    ports:
+      - "8001:8001"
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
+    command: >
+      --model ${LLM_MODEL:-meta-llama/Llama-3.3-70B-Instruct}
+      --tensor-parallel-size ${VLLM_TP:-4}
+      --dtype bfloat16
+      --port 8001
+      --enable-auto-tool-choice
+      --tool-call-parser ${VLLM_TOOL_PARSER:-hermes}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0","1", "2", "4"]
+              capabilities: [gpu]
+    ipc: host
+    networks:
+      - rosbot
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s   # vLLM takes time to load
 
   # TurtleBot4 Gazebo Harmonic sim (headless server, no display needed)
   sim:
@@ -20,7 +55,7 @@ services:
     profiles: ["sim"]
     ports:
       - "9090:9090"       # rosbridge WebSocket
-      - "11345:11345"     # Gazebo server port (for remote GUI connection)
+      - "11345:11345"     # Gazebo server port (for remote GUI)
     environment:
       - ROS_DOMAIN_ID=0
       - TURTLEBOT4_MODEL=${TURTLEBOT4_MODEL:-standard}
@@ -29,7 +64,7 @@ services:
       - rosbot
     restart: unless-stopped
 
-  # rosbot server (FastAPI + Whisper, points at vLLM on host)
+  # rosbot server (FastAPI + Whisper)
   rosbot:
     build:
       context: .
@@ -39,16 +74,16 @@ services:
     ports:
       - "${PORT:-8082}:${PORT:-8082}"
     environment:
-      - LLM_BASE_URL=${LLM_BASE_URL:-http://host-gateway:8001/v1}
+      - LLM_BASE_URL=http://vllm:8001/v1
       - LLM_MODEL=${LLM_MODEL:-meta-llama/Llama-3.3-70B-Instruct}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ROSBRIDGE_URL=${ROSBRIDGE_URL:-ws://sim:9090}
       - TWIST_STAMPED=${TWIST_STAMPED:-false}
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - PORT=${PORT:-8082}
-    extra_hosts:
-      - "host-gateway:host-gateway"
     depends_on:
+      vllm:
+        condition: service_healthy
       sim:
         condition: service_started
         required: false
