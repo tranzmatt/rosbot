@@ -19,6 +19,9 @@ services:
       - "8001:8001"
     environment:
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - HF_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - NVIDIA_VISIBLE_DEVICES=${VLLM_GPUS:-0,1,2,4}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
       - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
     command: >
@@ -28,13 +31,7 @@ services:
       --port 8001
       --enable-auto-tool-choice
       --tool-call-parser ${VLLM_TOOL_PARSER:-hermes}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["0","1", "2", "4"]
-              capabilities: [gpu]
+    runtime: nvidia
     ipc: host
     networks:
       - rosbot
@@ -44,7 +41,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 10
-      start_period: 300s   # vLLM takes time to load
+      start_period: 300s
 
   # TurtleBot4 Gazebo Harmonic sim (headless server, no display needed)
   sim:
@@ -54,8 +51,8 @@ services:
     image: rosbot/sim:latest
     profiles: ["sim"]
     ports:
-      - "9090:9090"       # rosbridge WebSocket
-      - "11345:11345"     # Gazebo server port (for remote GUI)
+      - "9090:9090"
+      - "11345:11345"
     environment:
       - ROS_DOMAIN_ID=0
       - TURTLEBOT4_MODEL=${TURTLEBOT4_MODEL:-standard}
