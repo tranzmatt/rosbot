@@ -1,5 +1,8 @@
-# TurtleBot4 sim (headless) + rosbridge
+# TurtleBot4 sim (headless server) + rosbridge
 # ROS2 Jazzy + Gazebo Harmonic + turtlebot4_simulator
+#
+# Runs gz sim -s only (no GUI process) via a custom launch file.
+# Connect GUI from laptop: gz sim -g (Gazebo auto-discovers the server)
 
 FROM ros:jazzy-ros-base
 
@@ -16,7 +19,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        > /etc/apt/sources.list.d/gazebo-stable.list \
     && rm -rf /var/lib/apt/lists/*
 
-# Ubuntu 24.04 (Noble) package names for software rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gz-harmonic \
     ros-jazzy-turtlebot4-simulator \
@@ -26,21 +28,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-gz-ros2-control \
     ros-jazzy-ros2-control \
     ros-jazzy-ros2-controllers \
-    libgl1-mesa-dri \
-    libglx-mesa0 \
-    mesa-utils \
-    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 ENV ROS_DOMAIN_ID=0
 ENV TURTLEBOT4_MODEL=standard
-ENV LIBGL_ALWAYS_SOFTWARE=1
-ENV GALLIUM_DRIVER=softpipe
-ENV QT_QPA_PLATFORM=offscreen
-ENV GZ_HEADLESS_RENDERING=1
-ENV MESA_GL_VERSION_OVERRIDE=3.3
 
 COPY sim_entrypoint.sh /sim_entrypoint.sh
+COPY headless_sim.launch.py /headless_sim.launch.py
 RUN chmod +x /sim_entrypoint.sh
 
 EXPOSE 9090 11345
