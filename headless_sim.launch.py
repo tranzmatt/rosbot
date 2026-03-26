@@ -46,6 +46,10 @@ def generate_launch_description():
         description="Robot namespace",
     )
 
+    declare_x = DeclareLaunchArgument("x", default_value="0.0", description="Spawn x position")
+    declare_y = DeclareLaunchArgument("y", default_value="0.0", description="Spawn y position")
+    declare_yaw = DeclareLaunchArgument("yaw", default_value="0.0", description="Spawn yaw (radians, 0 = +x)")
+
     # Allow entrypoint to inject a patched world SDF (e.g. with ogre2 sensors plugin)
     # via environment variable. Falls back to the standard turtlebot4_gz_bringup path.
     world_sdf = os.environ.get(
@@ -97,6 +101,9 @@ def generate_launch_description():
                 launch_arguments={
                     "model": model,
                     "namespace": namespace,
+                    "x": LaunchConfiguration("x"),
+                    "y": LaunchConfiguration("y"),
+                    "yaw": LaunchConfiguration("yaw"),
                 }.items(),
             )
         ],
@@ -166,6 +173,9 @@ def generate_launch_description():
         declare_world,
         declare_model,
         declare_namespace,
+        declare_x,
+        declare_y,
+        declare_yaw,
         gz_server,
         clock_bridge,       # t=5s:  /clock bridge
         spawn,              # t=8s:  spawn robot

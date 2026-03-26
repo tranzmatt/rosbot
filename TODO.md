@@ -6,7 +6,7 @@
       `docker exec rosbot-rosbot-1 pip list | grep whisper` returns nothing.
       Fix the pip install or switch to `openai-whisper` as fallback.
 
-- [ ] **Robot spawns facing -x** — TurtleBot4 spawns with its forward axis pointing
+- [x] **Robot spawns facing -x** — TurtleBot4 spawns with its forward axis pointing
       in the -x world direction. Not a functional bug (relative navigation works correctly)
       but confusing when checking `sim_ground_truth_pose`. Add a `yaw` spawn arg to
       `headless_sim.launch.py` → `turtlebot4_spawn.launch.py` to spawn facing +x.
