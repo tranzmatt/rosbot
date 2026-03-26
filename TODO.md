@@ -41,7 +41,7 @@
 - [ ] **Spawn orientation** — Add `x`, `y`, `yaw` launch args to `headless_sim.launch.py`
       so spawn pose is configurable without editing source.
 
-- [ ] **`.env.example` GPU section** — Add commented-out examples for `SIM_GPU` and
+- [x] **`.env.example` GPU section** — Add commented-out examples for `SIM_GPU` and
       `VLLM_GPUS` with instructions for finding UUIDs via `nvidia-smi -L`.
 
 - [ ] **`rosbot.sh gui` command** — Currently just prints the gz sim -g connect command.
