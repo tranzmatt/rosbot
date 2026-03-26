@@ -10,7 +10,7 @@ export LD_LIBRARY_PATH=/opt/ros/jazzy/lib:${LD_LIBRARY_PATH}
 WORLD="${TB4_WORLD:-depot}"
 MODEL="${TURTLEBOT4_MODEL:-standard}"
 
-echo "[rosbot] Starting TurtleBot4 sim (headless, NVIDIA EGL)"
+echo "[rosbot] Starting TurtleBot4 sim (headless)"
 echo "[rosbot] World: ${WORLD}  Model: ${MODEL}"
 
 WORLD_FILE="/opt/ros/jazzy/share/turtlebot4_gz_bringup/worlds/${WORLD}.sdf"
@@ -29,27 +29,39 @@ else
     echo "[rosbot] WARNING: libgz_ros2_control not found — controllers may fail"
 fi
 
-# Check for NVIDIA GPU — use EGL hardware rendering if available, fall back to Mesa
-if [ -e /dev/nvidia0 ] || nvidia-smi &>/dev/null; then
-    echo "[rosbot] NVIDIA GPU detected — using EGL hardware rendering"
+# Start Xvfb on a fixed display number and wait for it to be ready.
+# Ogre requires a display handle even in server-only mode (sensor rendering pipeline).
+# xvfb-run is unreliable here — it's async and gz sim races against it.
+DISPLAY_NUM=99
+export DISPLAY=:${DISPLAY_NUM}
+
+echo "[rosbot] Starting Xvfb on display :${DISPLAY_NUM}..."
+Xvfb :${DISPLAY_NUM} -screen 0 1280x1024x24 -ac +extension GLX +render -noreset &
+XVFB_PID=$!
+
+# Wait until Xvfb is actually accepting connections
+for i in $(seq 1 20); do
+    if xdpyinfo -display :${DISPLAY_NUM} &>/dev/null; then
+        echo "[rosbot] ✓ Xvfb ready on display :${DISPLAY_NUM}"
+        break
+    fi
+    sleep 0.5
+done
+
+# Check for NVIDIA GPU
+if nvidia-smi &>/dev/null; then
+    echo "[rosbot] NVIDIA GPU detected — using hardware rendering"
     export LIBGL_ALWAYS_SOFTWARE=0
-    # Point Ogre/GLVND to the NVIDIA EGL vendor
     export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
-    # xvfb still needed: Ogre MinimalScene plugin requires a display handle even
-    # in server-only mode (for the LIDAR/camera sensor rendering pipeline).
-    # With a real GPU, xvfb just provides the handle — actual rendering uses EGL.
-    xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" \
-        ros2 launch /headless_sim.launch.py \
-            world:=${WORLD} \
-            model:=${MODEL} &
 else
-    echo "[rosbot] No NVIDIA GPU — falling back to Mesa software rendering (expect ~1% RTF)"
+    echo "[rosbot] No NVIDIA GPU — using Mesa software rendering (expect ~1% RTF)"
     export LIBGL_ALWAYS_SOFTWARE=1
-    xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" \
-        ros2 launch /headless_sim.launch.py \
-            world:=${WORLD} \
-            model:=${MODEL} &
 fi
+
+echo "[rosbot] Launching sim..."
+ros2 launch /headless_sim.launch.py \
+    world:=${WORLD} \
+    model:=${MODEL} &
 
 LAUNCH_PID=$!
 echo "[rosbot] Waiting for sim to initialize (~35s)..."
@@ -60,7 +72,7 @@ if ! kill -0 $LAUNCH_PID 2>/dev/null; then
     exit 1
 fi
 
-# Ensure diffdrive_controller is active (belt-and-suspenders alongside the spawner in launch file)
+# Ensure diffdrive_controller is active (belt-and-suspenders alongside spawner in launch file)
 echo "[rosbot] Ensuring diffdrive_controller is active..."
 for i in 1 2 3; do
     STATE=$(ros2 control list_controllers 2>/dev/null | grep diffdrive | awk '{print $3}')
