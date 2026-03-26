@@ -54,8 +54,11 @@ services:
       - NVIDIA_VISIBLE_DEVICES=${SIM_GPU:-GPU-4bd84ab9-44b9-2eef-b12d-58a3037d8df5}
       - NVIDIA_DRIVER_CAPABILITIES=all,display
       # EGL hardware rendering — replaces Mesa software fallback
-      - __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+      # Force Ogre2 to use EGL backend instead of GLX — no X display needed
       - LIBGL_ALWAYS_SOFTWARE=0
+      - GZ_RENDERING_ENGINE_SERVER_API=EGL
+      - GZ_RENDERING_RENDER_ENGINE_SERVER_API_BACKEND=EGL
+      - __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
     networks:
       - rosbot
     restart: unless-stopped
