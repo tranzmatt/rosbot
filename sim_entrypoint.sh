@@ -29,16 +29,50 @@ else
     echo "[rosbot] WARNING: libgz_ros2_control not found — controllers may fail"
 fi
 
-# Rendering setup.
-#
-# The sensors system (LIDAR/camera) forces a render engine to load even in -s server mode.
-# By default gz-rendering loads Ogre 1.x (GLX-only) — which crashes without an X display.
-# Fix: force Ogre2, which supports EGL and can render without any X display.
-#
-# GZ_RENDERING_ENGINE=ogre2 selects the Ogre-Next (2.x) plugin.
-# With no DISPLAY set, Ogre2 auto-selects EGL over GLX.
-export GZ_RENDERING_ENGINE=ogre2
+# The depot.sdf has the Sensors system plugin commented out, so gz-rendering defaults
+# to ogre (1.x / GLX-only) when the robot's camera/LIDAR models trigger it.
+# Fix: patch the world SDF to explicitly enable the Sensors plugin with ogre2,
+# which supports EGL and runs without any X display.
+PATCHED_WORLD="/tmp/${WORLD}_patched.sdf"
+cp "$WORLD_FILE" "$PATCHED_WORLD"
 
+# Uncomment the sensors plugin block and ensure ogre2 is specified
+python3 - "$PATCHED_WORLD" << 'PYEOF'
+import sys, re
+
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+
+# Remove <!-- --> wrapping the Sensors plugin
+content = re.sub(
+    r'<!--\s*(<plugin[^>]*Sensors[^/]*/>\s*(?:<render_engine>.*?</render_engine>\s*)?</plugin>)\s*-->',
+    r'\1',
+    content,
+    flags=re.DOTALL
+)
+
+# If sensors plugin is now present but has no render_engine tag, insert ogre2
+if '<plugin name="gz::sim::systems::Sensors"' in content and '<render_engine>ogre2</render_engine>' not in content:
+    content = content.replace(
+        'filename="gz-sim-sensors-system" />',
+        'filename="gz-sim-sensors-system">\n        <render_engine>ogre2</render_engine>\n    </plugin>'
+    )
+    content = content.replace(
+        'filename="gz-sim-sensors-system"/>',
+        'filename="gz-sim-sensors-system">\n        <render_engine>ogre2</render_engine>\n    </plugin>'
+    )
+
+with open(path, 'w') as f:
+    f.write(content)
+
+print(f"[rosbot] Patched world SDF: sensors system with ogre2")
+PYEOF
+
+echo "[rosbot] Using patched world: $PATCHED_WORLD"
+grep -A3 'Sensors' "$PATCHED_WORLD" | head -8
+
+# Rendering: Ogre2 supports EGL — no X display needed with NVIDIA GPU
 if nvidia-smi &>/dev/null; then
     echo "[rosbot] NVIDIA GPU detected — Ogre2 + EGL (no display required)"
     unset DISPLAY
@@ -52,10 +86,12 @@ else
     export DISPLAY=:99
 fi
 
-echo "[rosbot] Launching sim (Ogre2, engine=${GZ_RENDERING_ENGINE})..."
+echo "[rosbot] Launching sim..."
+export ROSBOT_WORLD_SDF="$PATCHED_WORLD"
 ros2 launch /headless_sim.launch.py \
     world:=${WORLD} \
-    model:=${MODEL} &
+    model:=${MODEL} \
+ &
 
 LAUNCH_PID=$!
 echo "[rosbot] Waiting for sim to initialize (~35s)..."
