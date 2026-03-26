@@ -30,28 +30,29 @@ else
 fi
 
 # Rendering setup.
-# Ogre2 can use EGL (no X display required) when a real GPU is available.
-# GLX (the default) requires an X display — which is why Xvfb was needed before.
-# With EGL we skip Xvfb entirely and render directly on the GPU framebuffer.
+#
+# The sensors system (LIDAR/camera) forces a render engine to load even in -s server mode.
+# By default gz-rendering loads Ogre 1.x (GLX-only) — which crashes without an X display.
+# Fix: force Ogre2, which supports EGL and can render without any X display.
+#
+# GZ_RENDERING_ENGINE=ogre2 selects the Ogre-Next (2.x) plugin.
+# With no DISPLAY set, Ogre2 auto-selects EGL over GLX.
+export GZ_RENDERING_ENGINE=ogre2
+
 if nvidia-smi &>/dev/null; then
-    echo "[rosbot] NVIDIA GPU detected — using EGL (no X display required)"
+    echo "[rosbot] NVIDIA GPU detected — Ogre2 + EGL (no display required)"
     unset DISPLAY
     export LIBGL_ALWAYS_SOFTWARE=0
-    # Tell Ogre2/gz-rendering to use EGL backend instead of GLX
-    export GZ_RENDERING_ENGINE_SERVER_API=EGL
-    export GZ_RENDERING_RENDER_ENGINE_SERVER_API_BACKEND=EGL
-    # Point GLVND to NVIDIA EGL vendor
     export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
 else
-    echo "[rosbot] No NVIDIA GPU — using Xvfb + Mesa software rendering (expect ~1% RTF)"
+    echo "[rosbot] No NVIDIA GPU — Ogre2 + Xvfb + Mesa"
     export LIBGL_ALWAYS_SOFTWARE=1
-    # Start Xvfb and give it a moment — no xdpyinfo needed
     Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset &
-    sleep 3
+    sleep 5
     export DISPLAY=:99
 fi
 
-echo "[rosbot] Launching sim..."
+echo "[rosbot] Launching sim (Ogre2, engine=${GZ_RENDERING_ENGINE})..."
 ros2 launch /headless_sim.launch.py \
     world:=${WORLD} \
     model:=${MODEL} &
