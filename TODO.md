@@ -25,7 +25,7 @@
       error is noisy. Investigate whether removing the TB4 spawner from the spawn
       launch args is possible, or suppress the error cleanly.
 
-- [ ] **Clock bridge topic hardcoded** — `headless_sim.launch.py` reads `TB4_WORLD`
+- [x] **Clock bridge topic hardcoded** — `headless_sim.launch.py` reads `TB4_WORLD`
       env var to construct the clock topic `/world/depot/clock`. If world changes,
       the bridge topic must match. Make this fully dynamic from the `world` launch arg.
 
