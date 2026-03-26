@@ -34,6 +34,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Verify gz-ros2-control plugin is findable
 RUN find /opt/ros/jazzy -name "libgz_ros2_control*" 2>/dev/null || echo "WARNING: libgz_ros2_control not found"
 
+# Disable Ogre 1.x plugin at build time so it is never loaded.
+# gz-rendering picks engines alphabetically; "ogre" sorts before "ogre2" and
+# crashes headless because it requires GLX. Renaming it forces Ogre2 (EGL-capable).
+RUN mv /opt/ros/jazzy/opt/gz_rendering_vendor/lib/gz-rendering-8/engine-plugins/libgz-rendering-ogre.so \
+       /opt/ros/jazzy/opt/gz_rendering_vendor/lib/gz-rendering-8/engine-plugins/libgz-rendering-ogre.so.bak
+
 ENV ROS_DOMAIN_ID=0
 ENV TURTLEBOT4_MODEL=standard
 ENV LIBGL_ALWAYS_SOFTWARE=1

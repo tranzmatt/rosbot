@@ -50,7 +50,7 @@
 - [ ] **Health check in docker-compose** — Add a healthcheck to the sim service so
       rosbot container waits for rosbridge to be ready instead of relying on timing.
 
-- [ ] **Ogre1 rename is permanent** — `sim_entrypoint.sh` renames `libgz-rendering-ogre.so`
+- [x] **Ogre1 rename is permanent** — `sim_entrypoint.sh` renames `libgz-rendering-ogre.so`
       to `.bak` inside the container. This persists across restarts (same container).
       Fine for now but if the image is rebuilt the rename is lost — document this or
       move the rename into the Dockerfile build step instead.

@@ -29,21 +29,9 @@ else
     echo "[rosbot] WARNING: libgz_ros2_control not found — controllers may fail"
 fi
 
-# Force Ogre2 by disabling the Ogre 1.x plugin.
-#
-# gz-rendering loads engine plugins alphabetically and "ogre" sorts before "ogre2".
-# The robot's URDF/SDF sensor definitions request "ogre" (1.x) which is GLX-only
-# and crashes without a real X display. Renaming the ogre1 .so forces gz-rendering
-# to fall back to ogre2, which supports EGL and runs headless on NVIDIA GPUs.
-OGRE1_PLUGIN="/opt/ros/jazzy/opt/gz_rendering_vendor/lib/gz-rendering-8/engine-plugins/libgz-rendering-ogre.so"
-OGRE1_BACKUP="${OGRE1_PLUGIN}.bak"
-if [ -f "$OGRE1_PLUGIN" ] && [ ! -f "$OGRE1_BACKUP" ]; then
-    echo "[rosbot] Disabling Ogre 1.x plugin (renaming to .bak) to force Ogre2..."
-    mv "$OGRE1_PLUGIN" "$OGRE1_BACKUP"
-    echo "[rosbot] ✓ Ogre2 is now the only available render engine"
-elif [ -f "$OGRE1_BACKUP" ]; then
-    echo "[rosbot] Ogre 1.x already disabled (backup exists)"
-fi
+# Ogre 1.x plugin is disabled at build time (renamed to .bak in Dockerfile.sim).
+# gz-rendering will only find Ogre2, which supports EGL for headless NVIDIA rendering.
+echo "[rosbot] Ogre2 is the only available render engine (Ogre1 disabled at build time)"
 
 # Rendering: Ogre2 supports EGL — no X display needed with NVIDIA GPU
 if nvidia-smi &>/dev/null; then
