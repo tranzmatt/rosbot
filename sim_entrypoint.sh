@@ -3,6 +3,10 @@ set -e
 
 source /opt/ros/jazzy/setup.bash
 
+# Tell gz sim where to find ROS2 control and other ROS plugins
+export GZ_SIM_SYSTEM_PLUGIN_PATH=/opt/ros/jazzy/lib:${GZ_SIM_SYSTEM_PLUGIN_PATH}
+export LD_LIBRARY_PATH=/opt/ros/jazzy/lib:${LD_LIBRARY_PATH}
+
 WORLD="${TB4_WORLD:-warehouse}"
 MODEL="${TURTLEBOT4_MODEL:-standard}"
 
