@@ -15,10 +15,10 @@
       debugging session. Confirm it has a publisher now that diffdrive is active, and
       test that "where am I?" returns correct coordinates.
 
-- [ ] **Low RTF (real-time factor)** — robot undershoots distance commands (~0.12m
-      instead of 1m). Verify the NVIDIA EGL path is actually active (check logs for
-      "NVIDIA GPU detected") vs Mesa software fallback. If EGL is active, RTF should
-      be near 1.0 and distance accuracy should improve significantly.
+- [x] **Low RTF (real-time factor)** — `GALLIUM_DRIVER=softpipe` was baked into the
+      image via Dockerfile.sim ENV, forcing Mesa software rendering even when NVIDIA GPU
+      was available. Removed all three software-rendering ENV defaults from the Dockerfile;
+      the no-GPU fallback path in sim_entrypoint.sh sets them at runtime when needed.
 
 - [ ] **diffdrive_controller spawner race** — TB4's own spawner (spawner-46) still
       fails with "already loaded" on every boot. Our spawner-70 recovers it, but the

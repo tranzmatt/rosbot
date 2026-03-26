@@ -42,9 +42,6 @@ RUN mv /opt/ros/jazzy/opt/gz_rendering_vendor/lib/gz-rendering-8/engine-plugins/
 
 ENV ROS_DOMAIN_ID=0
 ENV TURTLEBOT4_MODEL=standard
-ENV LIBGL_ALWAYS_SOFTWARE=1
-ENV GALLIUM_DRIVER=softpipe
-ENV MESA_GL_VERSION_OVERRIDE=4.5
 
 COPY sim_entrypoint.sh /sim_entrypoint.sh
 COPY headless_sim.launch.py /headless_sim.launch.py
