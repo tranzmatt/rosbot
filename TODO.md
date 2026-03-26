@@ -32,9 +32,11 @@
 
 ## Improvements
 
-- [ ] **Distance accuracy** — `drive()` uses fixed velocity × duration to estimate
-      distance. At low RTF this is way off. Use `/odom` feedback to drive a measured
-      distance instead of timed velocity.
+- [x] **Distance accuracy** — `drive()` uses fixed velocity × duration to estimate
+      distance. At low RTF this is way off. Added a `distance` parameter: when set
+      with `linear_x≠0`, a persistent odom subscription tracks displacement and stops
+      the robot when the target is reached. Timed mode is the fallback for turns,
+      curves, and when odom is unavailable.
 
 - [x] **`get_position` should use sim_ground_truth_pose in sim mode** — `/odom` drifts;
       `/sim_ground_truth_pose` is exact. Auto-detect sim vs real and pick the right topic.

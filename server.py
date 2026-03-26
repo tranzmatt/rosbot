@@ -20,6 +20,7 @@ Environment variables:
 import asyncio
 import base64
 import json
+import math
 import os
 import tempfile
 import uuid
@@ -201,6 +202,16 @@ ros = RosbridgeClient(ROSBRIDGE_URL)
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _extract_odom_xy(msg: dict) -> Optional[tuple[float, float]]:
+    """Extract (x, y) from an odom or sim_ground_truth_pose message."""
+    if SIM_MODE:
+        pos = msg.get("position", {})
+    else:
+        pos = msg.get("pose", {}).get("pose", {}).get("position", {})
+    x, y = pos.get("x"), pos.get("y")
+    return (float(x), float(y)) if x is not None and y is not None else None
+
+
 def _make_twist_msg(linear_x: float, angular_z: float) -> tuple[str, dict]:
     body = {
         "linear":  {"x": linear_x, "y": 0.0, "z": 0.0},
@@ -215,7 +226,12 @@ def _make_twist_msg(linear_x: float, angular_z: float) -> tuple[str, dict]:
 # ROS2 tools
 # ---------------------------------------------------------------------------
 
-async def ros_drive(linear_x: float, angular_z: float, duration: float = 1.0) -> str:
+async def ros_drive(
+    linear_x: float,
+    angular_z: float,
+    duration: float = 1.0,
+    distance: Optional[float] = None,
+) -> str:
     linear_x  = max(-MAX_LINEAR,  min(MAX_LINEAR,  linear_x))
     angular_z = max(-MAX_ANGULAR, min(MAX_ANGULAR, angular_z))
     duration  = max(0.1, min(30.0, duration))
@@ -223,17 +239,99 @@ async def ros_drive(linear_x: float, angular_z: float, duration: float = 1.0) ->
     msg_type, drive_msg = _make_twist_msg(linear_x, angular_z)
     _,        stop_msg  = _make_twist_msg(0.0, 0.0)
 
-    steps = max(1, int(duration * 10))
-    for _ in range(steps):
-        await ros.publish("/cmd_vel", msg_type, drive_msg)
-        await asyncio.sleep(0.1)
-    await ros.publish("/cmd_vel", msg_type, stop_msg)
-
     dir_str  = "forward" if linear_x > 0 else "backward" if linear_x < 0 else ""
     turn_str = "left" if angular_z > 0 else "right" if angular_z < 0 else ""
     parts    = [p for p in [dir_str, turn_str] if p]
     motion   = " + ".join(parts) if parts else "in place"
-    return f"Drove {motion} at {abs(linear_x):.2f} m/s / {abs(angular_z):.2f} rad/s for {duration:.1f}s"
+
+    if distance is not None and linear_x != 0.0:
+        # ── Odom-feedback distance mode ──────────────────────────────────────
+        # Drive until odometry reports the target distance has been covered.
+        # Falls back to timed mode if odom is unavailable.
+        target  = max(0.01, abs(distance))
+        timeout = min(30.0, target / abs(linear_x) * 3.0)  # generous 3× budget
+
+        odom_topic = "/sim_ground_truth_pose" if SIM_MODE else "/odom"
+        odom_type  = "geometry_msgs/msg/Pose"      if SIM_MODE else "nav_msgs/msg/Odometry"
+
+        if not await ros.ensure_connected():
+            raise ConnectionError("Cannot connect to rosbridge")
+
+        # Persistent subscription for the duration of the drive
+        q: asyncio.Queue = asyncio.Queue(maxsize=5)
+        if odom_topic not in ros._subscribers:
+            ros._subscribers[odom_topic] = []
+            await ros.ws.send(json.dumps({
+                "op": "subscribe", "id": f"sub_{uuid.uuid4().hex[:8]}",
+                "topic": odom_topic, "type": odom_type,
+                "queue_length": 1, "throttle_rate": 0,
+            }))
+        ros._subscribers[odom_topic].append(q)
+
+        try:
+            # Read start position (wait up to 3 s)
+            try:
+                start = _extract_odom_xy(await asyncio.wait_for(q.get(), timeout=3.0))
+            except asyncio.TimeoutError:
+                start = None
+
+            if start is None:
+                # Odom unavailable — timed fallback
+                steps = max(1, int(duration * 10))
+                for _ in range(steps):
+                    await ros.publish("/cmd_vel", msg_type, drive_msg)
+                    await asyncio.sleep(0.1)
+                await ros.publish("/cmd_vel", msg_type, stop_msg)
+                return (f"Drove {motion} at {abs(linear_x):.2f} m/s for {duration:.1f}s"
+                        f" (odom unavailable, timed fallback)")
+
+            sx, sy = start
+            traveled = 0.0
+            loop     = asyncio.get_event_loop()
+            deadline = loop.time() + timeout
+
+            while traveled < target:
+                if loop.time() > deadline:
+                    break
+                await ros.publish("/cmd_vel", msg_type, drive_msg)
+                # Drain queue → use most-recent odom sample
+                latest = None
+                while not q.empty():
+                    latest = q.get_nowait()
+                if latest is None:
+                    try:
+                        latest = await asyncio.wait_for(q.get(), timeout=0.15)
+                    except asyncio.TimeoutError:
+                        pass
+                if latest is not None:
+                    cur = _extract_odom_xy(latest)
+                    if cur is not None:
+                        traveled = math.sqrt((cur[0] - sx) ** 2 + (cur[1] - sy) ** 2)
+                await asyncio.sleep(0.05)
+
+            await ros.publish("/cmd_vel", msg_type, stop_msg)
+            suffix = " (timeout)" if loop.time() >= deadline else ""
+            return f"Drove {motion} {traveled:.2f}m (target {target:.2f}m){suffix}"
+
+        finally:
+            subs = ros._subscribers.get(odom_topic, [])
+            if q in subs:
+                subs.remove(q)
+            if not subs:
+                ros._subscribers.pop(odom_topic, None)
+                try:
+                    await ros.ws.send(json.dumps({"op": "unsubscribe", "topic": odom_topic}))
+                except Exception:
+                    pass
+
+    else:
+        # ── Timed mode ───────────────────────────────────────────────────────
+        steps = max(1, int(duration * 10))
+        for _ in range(steps):
+            await ros.publish("/cmd_vel", msg_type, drive_msg)
+            await asyncio.sleep(0.1)
+        await ros.publish("/cmd_vel", msg_type, stop_msg)
+        return f"Drove {motion} at {abs(linear_x):.2f} m/s / {abs(angular_z):.2f} rad/s for {duration:.1f}s"
 
 
 async def ros_stop() -> str:
@@ -287,10 +385,12 @@ async def ros_list_topics() -> str:
 async def execute_tool(tool_name: str, tool_input: dict) -> str:
     try:
         if tool_name == "drive":
+            raw_dist = tool_input.get("distance")
             return await ros_drive(
                 linear_x  = float(tool_input.get("linear_x", 0.0)),
                 angular_z = float(tool_input.get("angular_z", 0.0)),
                 duration  = float(tool_input.get("duration", 1.0)),
+                distance  = float(raw_dist) if raw_dist is not None else None,
             )
         elif tool_name == "stop":      return await ros_stop()
         elif tool_name == "get_position": return await ros_get_position()
@@ -313,14 +413,16 @@ TOOLS = [
         "description": (
             "Drive the TurtleBot4. Positive linear_x=forward, negative=backward. "
             "Positive angular_z=turn left, negative=turn right. "
-            "Always specify duration so the robot stops automatically."
+            "For straight-line moves, prefer distance over duration for accuracy. "
+            "For turns or curves, use duration. Always specify at least one."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "linear_x":  {"type": "number", "description": "Forward/back speed m/s. Range -0.3 to 0.3."},
                 "angular_z": {"type": "number", "description": "Rotation rad/s. Positive=left, negative=right. Range -1.0 to 1.0."},
-                "duration":  {"type": "number", "description": "Drive time in seconds. Default 1.0, max 30."},
+                "distance":  {"type": "number", "description": "Target distance in meters. When set with linear_x≠0, uses odom feedback to stop at the measured distance instead of relying on time."},
+                "duration":  {"type": "number", "description": "Drive time in seconds. Default 1.0, max 30. Used for turns, curves, or when distance is not set."},
             },
             "required": ["linear_x", "angular_z"],
         },
@@ -370,13 +472,16 @@ Safety rules:
 - Ask for clarification if ambiguous or dangerous
 
 Motion reference:
-- "forward/ahead" → drive(linear_x=0.2, angular_z=0, duration=2)
-- "backward/reverse" → drive(linear_x=-0.2, angular_z=0, duration=2)
-- "turn left 90°" → drive(linear_x=0, angular_z=0.5, duration=3.14)
-- "turn right 90°" → drive(linear_x=0, angular_z=-0.5, duration=3.14)
-- "spin 360°" → drive(linear_x=0, angular_z=0.5, duration=6.28)
-- "circle" → drive(linear_x=0.15, angular_z=0.5, duration=6)
-- "stop/halt" → stop()
+- "forward 1 metre" → drive(linear_x=0.2, angular_z=0, distance=1.0)
+- "back 0.5 m"      → drive(linear_x=-0.2, angular_z=0, distance=0.5)
+- "forward/ahead"   → drive(linear_x=0.2, angular_z=0, duration=2)
+- "backward/reverse"→ drive(linear_x=-0.2, angular_z=0, duration=2)
+- "turn left 90°"   → drive(linear_x=0, angular_z=0.5, duration=3.14)
+- "turn right 90°"  → drive(linear_x=0, angular_z=-0.5, duration=3.14)
+- "spin 360°"       → drive(linear_x=0, angular_z=0.5, duration=6.28)
+- "circle"          → drive(linear_x=0.15, angular_z=0.5, duration=6)
+- "stop/halt"       → stop()
+- Use distance= for any command specifying metres/feet; use duration= for turns and curves.
 
 Keep replies short and conversational."""
 
