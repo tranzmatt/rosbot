@@ -48,7 +48,6 @@ def generate_launch_description():
 
     # Allow entrypoint to inject a patched world SDF (e.g. with ogre2 sensors plugin)
     # via environment variable. Falls back to the standard turtlebot4_gz_bringup path.
-    world_name = os.environ.get("TB4_WORLD", "depot")
     world_sdf = os.environ.get(
         "ROSBOT_WORLD_SDF",
         None
@@ -68,7 +67,6 @@ def generate_launch_description():
 
     # Clock bridge: Gazebo /world/<name>/clock → ROS2 /clock
     # Must start before spawn so controller_manager gets sim time.
-    clock_topic = f"/world/{world_name}/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"
     clock_bridge = TimerAction(
         period=5.0,
         actions=[
@@ -76,8 +74,8 @@ def generate_launch_description():
                 package="ros_gz_bridge",
                 executable="parameter_bridge",
                 name="clock_bridge",
-                arguments=[clock_topic],
-                remappings=[(f"/world/{world_name}/clock", "/clock")],
+                arguments=[["/world/", world, "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]],
+                remappings=[(["/world/", world, "/clock"], "/clock")],
                 output="screen",
                 parameters=[{"use_sim_time": True}],
             )
