@@ -12,6 +12,7 @@ Environment variables:
     ANTHROPIC_API_KEY  Anthropic API key (used if LLM_BASE_URL not set)
     WHISPER_MODEL      Whisper model size                 (default: base)
     TWIST_STAMPED      true for TurtleBot3 Gazebo sim     (default: false)
+    SIM_MODE           true to use sim_ground_truth_pose  (default: false)
     HOST               Bind host                          (default: 0.0.0.0)
     PORT               Bind port                          (default: 8082)
 """
@@ -40,6 +41,7 @@ WHISPER_MODEL_SIZE = os.environ.get("WHISPER_MODEL", "base")
 HOST               = os.environ.get("HOST", "0.0.0.0")
 PORT               = int(os.environ.get("PORT", "8082"))
 TWIST_STAMPED      = os.environ.get("TWIST_STAMPED", "false").lower() == "true"
+SIM_MODE           = os.environ.get("SIM_MODE", "false").lower() == "true"
 
 # LLM backend — vLLM takes priority over Anthropic
 LLM_BASE_URL  = os.environ.get("LLM_BASE_URL", "")
@@ -241,9 +243,14 @@ async def ros_stop() -> str:
 
 
 async def ros_get_position() -> str:
+    if SIM_MODE:
+        msg = await ros.subscribe_once("/sim_ground_truth_pose", "geometry_msgs/msg/Pose", timeout=4.0)
+        if msg is not None:
+            pos = msg.get("position", {})
+            return f"Position: x={pos.get('x', 0):.3f}m, y={pos.get('y', 0):.3f}m"
     msg = await ros.subscribe_once("/odom", "nav_msgs/msg/Odometry", timeout=4.0)
     if msg is None:
-        return "Could not read odometry (timeout)."
+        return "Could not read position (timeout on /odom)."
     pos = msg.get("pose", {}).get("pose", {}).get("position", {})
     return f"Position: x={pos.get('x', 0):.3f}m, y={pos.get('y', 0):.3f}m"
 

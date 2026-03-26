@@ -11,7 +11,7 @@
       but confusing when checking `sim_ground_truth_pose`. Add a `yaw` spawn arg to
       `headless_sim.launch.py` → `turtlebot4_spawn.launch.py` to spawn facing +x.
 
-- [ ] **`get_position` tool unverified** — `/odom` had 0 publishers for most of the
+- [x] **`get_position` tool unverified** — `/odom` had 0 publishers for most of the
       debugging session. Confirm it has a publisher now that diffdrive is active, and
       test that "where am I?" returns correct coordinates.
 
@@ -35,7 +35,7 @@
       distance. At low RTF this is way off. Use `/odom` feedback to drive a measured
       distance instead of timed velocity.
 
-- [ ] **`get_position` should use sim_ground_truth_pose in sim mode** — `/odom` drifts;
+- [x] **`get_position` should use sim_ground_truth_pose in sim mode** — `/odom` drifts;
       `/sim_ground_truth_pose` is exact. Auto-detect sim vs real and pick the right topic.
 
 - [ ] **Spawn orientation** — Add `x`, `y`, `yaw` launch args to `headless_sim.launch.py`
