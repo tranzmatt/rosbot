@@ -20,10 +20,11 @@
       was available. Removed all three software-rendering ENV defaults from the Dockerfile;
       the no-GPU fallback path in sim_entrypoint.sh sets them at runtime when needed.
 
-- [ ] **diffdrive_controller spawner race** — TB4's own spawner (spawner-46) still
+- [x] **diffdrive_controller spawner race** — TB4's own spawner (spawner-46) still
       fails with "already loaded" on every boot. Our spawner-70 recovers it, but the
-      error is noisy. Investigate whether removing the TB4 spawner from the spawn
-      launch args is possible, or suppress the error cleanly.
+      error is noisy. Fixed by expanding `turtlebot4_spawn.launch.py` manually in
+      `headless_sim.launch.py`, excluding `create3_nodes.launch.py` (the source of
+      spawner-46). Our `diffdrive_spawner` at t=30s is now the sole spawner.
 
 - [x] **Clock bridge topic hardcoded** — `headless_sim.launch.py` reads `TB4_WORLD`
       env var to construct the clock topic `/world/depot/clock`. If world changes,
