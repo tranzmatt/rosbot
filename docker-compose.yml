@@ -80,6 +80,8 @@ services:
       - TWIST_STAMPED=${TWIST_STAMPED:-true}
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - PORT=${PORT:-8082}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+      - PYTHONUNBUFFERED=1
     extra_hosts:
       - "host-gateway:host-gateway"
     depends_on:
