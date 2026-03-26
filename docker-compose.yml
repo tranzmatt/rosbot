@@ -1,26 +1,25 @@
-
-# RosBot stack
+# RosBot stack — runs entirely on DGX (172.32.1.250)
 #
 # Usage:
-#   ./rosbot.sh sim       # vLLM + TurtleBot4 sim (headless) + rosbot server
-#   ./rosbot.sh real      # vLLM + rosbot server → real TurtleBot4
+#   ./rosbot.sh sim       # TurtleBot4 sim (headless) + rosbot server
+#   ./rosbot.sh real      # Point at real TurtleBot4 + rosbot server
 #   ./rosbot.sh down      # Stop everything
 #
 # Configuration: copy .env.example to .env and edit
 
 services:
 
-  # vLLM — local LLM inference server
+  # vLLM — optional, only needed if not already running on host
   vllm:
     image: vllm/vllm-openai:latest
-    profiles: ["sim", "real"]
+    profiles: ["vllm"]
+    runtime: nvidia
     ports:
       - "8001:8001"
     environment:
-      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
-      - HF_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
-      - NVIDIA_VISIBLE_DEVICES=${VLLM_GPUS:-0,1,2,4}
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=${VLLM_GPUS}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - HF_TOKEN=${HUGGING_FACE_HUB_TOKEN}
     volumes:
       - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
     command: >
@@ -30,38 +29,38 @@ services:
       --port 8001
       --enable-auto-tool-choice
       --tool-call-parser ${VLLM_TOOL_PARSER:-hermes}
-    runtime: nvidia
-    ipc: host
+    shm_size: "16gb"
     networks:
       - rosbot
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8001/v1/models"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 300s
 
-  # TurtleBot4 Gazebo Harmonic sim (headless server, no display needed)
+  # TurtleBot4 Gazebo Harmonic sim (headless server)
+  # Uses the DGX Display GPU (GPU 3) for hardware-accelerated Ogre/EGL rendering.
+  # Without a real GPU, Mesa software rendering gives ~0.3% RTF — unusable.
   sim:
     build:
       context: .
       dockerfile: Dockerfile.sim
     image: rosbot/sim:latest
     profiles: ["sim"]
+    runtime: nvidia
     ports:
-      - "9090:9090"
-      - "11345:11345"
+      - "9090:9090"       # rosbridge WebSocket
+      - "11345:11345"     # Gazebo server port (for remote gz sim -g GUI)
     environment:
       - ROS_DOMAIN_ID=0
       - TURTLEBOT4_MODEL=${TURTLEBOT4_MODEL:-standard}
-      - TB4_WORLD=${TB4_WORLD:-empty}
-      - QT_QPA_PLATFORM=offscreen
+      - TB4_WORLD=${TB4_WORLD:-depot}
+      # GPU 3 = DGX Display GPU — used for Ogre/EGL rendering in Gazebo
+      - NVIDIA_VISIBLE_DEVICES=${SIM_GPU:-GPU-4bd84ab9-44b9-2eef-b12d-58a3037d8df5}
+      - NVIDIA_DRIVER_CAPABILITIES=all,display
+      # EGL hardware rendering — replaces Mesa software fallback
+      - __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+      - LIBGL_ALWAYS_SOFTWARE=0
     networks:
       - rosbot
     restart: unless-stopped
 
-  # rosbot server (FastAPI + Whisper)
+  # rosbot server (FastAPI + Whisper, points at vLLM on host)
   rosbot:
     build:
       context: .
@@ -71,16 +70,16 @@ services:
     ports:
       - "${PORT:-8082}:${PORT:-8082}"
     environment:
-      - LLM_BASE_URL=http://vllm:8001/v1
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host-gateway:8001/v1}
       - LLM_MODEL=${LLM_MODEL:-meta-llama/Llama-3.3-70B-Instruct}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ROSBRIDGE_URL=${ROSBRIDGE_URL:-ws://sim:9090}
-      - TWIST_STAMPED=${TWIST_STAMPED:-false}
+      - TWIST_STAMPED=${TWIST_STAMPED:-true}
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - PORT=${PORT:-8082}
+    extra_hosts:
+      - "host-gateway:host-gateway"
     depends_on:
-      vllm:
-        condition: service_healthy
       sim:
         condition: service_started
         required: false
