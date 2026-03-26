@@ -1,8 +1,5 @@
 # TurtleBot4 sim (headless server) + rosbridge
 # ROS2 Jazzy + Gazebo Harmonic + turtlebot4_simulator
-#
-# Runs gz sim -s only (no GUI process) via a custom launch file.
-# Connect GUI from laptop: gz sim -g (Gazebo auto-discovers the server)
 
 FROM ros:jazzy-ros-base
 
@@ -25,13 +22,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-turtlebot4-navigation \
     ros-jazzy-rosbridge-suite \
     ros-jazzy-slam-toolbox \
-    ros-jazzy-gz-ros2-control \
     ros-jazzy-ros2-control \
     ros-jazzy-ros2-controllers \
+    ros-jazzy-gz-ros2-control \
+    libgl1-mesa-dri \
+    libglx-mesa0 \
+    mesa-utils \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
+
+# Verify gz-ros2-control plugin is findable
+RUN find /opt/ros/jazzy -name "libgz_ros2_control*" 2>/dev/null || echo "WARNING: libgz_ros2_control not found"
 
 ENV ROS_DOMAIN_ID=0
 ENV TURTLEBOT4_MODEL=standard
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV GALLIUM_DRIVER=softpipe
+ENV MESA_GL_VERSION_OVERRIDE=4.5
 
 COPY sim_entrypoint.sh /sim_entrypoint.sh
 COPY headless_sim.launch.py /headless_sim.launch.py
