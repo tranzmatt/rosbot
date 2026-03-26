@@ -22,6 +22,20 @@ Browser (phone/laptop)
 - **Sim + real robot** — one env var to switch between TurtleBot4 sim and real hardware
 - **Single command startup** — `./rosbot.sh sim` or `./rosbot.sh real`
 
+## Status
+
+**Confirmed working (sim):**
+- Natural language → tool call → robot motion, verified by position change in Gazebo
+- Turn + forward in correct relative directions (navigation geometry correct)
+- Headless Gazebo Harmonic on NVIDIA DGX A100 with Ogre2/EGL (no display needed)
+- Sim clock bridged → physics ticks at real RTF
+- diffdrive_controller reliably activates on every startup
+- Single command startup: `./rosbot.sh sim`
+
+**Known issues / next steps:**
+- Voice input disabled (faster-whisper install in Dockerfile.rosbot needs fixing)
+- Real TurtleBot4 untested (change `ROSBRIDGE_URL` in `.env`)
+
 ## Hardware / Software
 
 - ROS2 Jazzy
@@ -34,7 +48,6 @@ Browser (phone/laptop)
 ### Prerequisites
 
 - Docker + Docker Compose
-- `gh` CLI (optional, for cloning)
 - A running LLM endpoint — either:
   - **Local vLLM** (recommended): `vllm serve meta-llama/Llama-3.3-70B-Instruct --port 8001 --enable-auto-tool-choice --tool-call-parser hermes`
   - **Anthropic API**: set `ANTHROPIC_API_KEY`
@@ -42,19 +55,20 @@ Browser (phone/laptop)
 ### Sim mode (TurtleBot4 in Gazebo Harmonic)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/rosbot.git
+git clone https://github.com/mclark/rosbot.git
 cd rosbot
+cp .env.example .env
+# Edit .env — set LLM_BASE_URL, SIM_GPU UUID, HuggingFace token
 
-# Start headless TB4 sim + rosbot server
 ./rosbot.sh sim
 ```
 
 Open `http://localhost:8082` (or `http://your-server-ip:8082` from any device on the network).
 
-To watch the simulation from your laptop while the server runs headlessly:
+To watch the simulation from your laptop:
 
 ```bash
-./rosbot.sh gui   # prints the exact command
+./rosbot.sh gui   # prints the gz sim -g connect command
 ```
 
 ### Real TurtleBot4
@@ -84,11 +98,26 @@ All configuration is via environment variables. Copy `.env.example` to `.env` to
 | `LLM_MODEL` | `meta-llama/Llama-3.3-70B-Instruct` | Model name |
 | `ANTHROPIC_API_KEY` | — | Use Anthropic instead of local LLM |
 | `ROSBRIDGE_URL` | `ws://sim:9090` | rosbridge WebSocket URL |
-| `TWIST_STAMPED` | `false` | Set `true` for TurtleBot3 Gazebo sim |
+| `TWIST_STAMPED` | `true` | TwistStamped (true) or Twist (false) on /cmd_vel |
 | `WHISPER_MODEL` | `base` | Whisper model: `tiny`, `base`, `small`, `medium` |
 | `TURTLEBOT4_MODEL` | `standard` | `standard` or `lite` |
-| `TB4_WORLD` | `empty` | Gazebo world: `empty` or `warehouse` |
+| `TB4_WORLD` | `depot` | Gazebo world: `depot`, `maze`, or `warehouse` |
+| `SIM_GPU` | — | NVIDIA GPU UUID for sim container (e.g. `GPU-57456950-...`) |
+| `VLLM_GPUS` | — | Comma-separated GPU UUIDs for vLLM |
+| `VLLM_TP` | `4` | vLLM tensor parallel size |
 | `PORT` | `8082` | Web UI port |
+
+### GPU configuration (DGX / multi-GPU)
+
+The sim container needs a GPU for Ogre2/EGL rendering — without it Gazebo runs at ~0.3% real-time. Set `SIM_GPU` to any available GPU UUID (not the display GPU — use a compute GPU):
+
+```bash
+nvidia-smi -L   # find UUID
+# Add to .env:
+SIM_GPU=GPU-57456950-e6dd-3f97-baac-42c6a9cc3431
+```
+
+The sim uses minimal VRAM (~0MB) so it coexists fine on the same GPU as vLLM.
 
 ## Commands
 
@@ -112,13 +141,20 @@ rosbot/
 ├── server.py            # FastAPI server (LLM agent + rosbridge client + Whisper)
 ├── static/
 │   └── index.html       # Web UI (vanilla JS, mobile-friendly, voice input)
-├── Dockerfile.sim       # TurtleBot4 + Gazebo Harmonic + rosbridge
-├── Dockerfile.rosbot    # FastAPI server + Whisper
-├── docker-compose.yml   # Orchestrates sim + rosbot profiles
-├── sim_entrypoint.sh    # Starts headless Gazebo then rosbridge
+├── Dockerfile.sim        # TurtleBot4 + Gazebo Harmonic + rosbridge
+├── Dockerfile.rosbot     # FastAPI server + Whisper
+├── docker-compose.yml    # Orchestrates sim + rosbot profiles
+├── headless_sim.launch.py  # ROS2 launch: gz sim -s + clock bridge + spawner
+├── sim_entrypoint.sh    # Disables Ogre1, sets up EGL, starts Gazebo + rosbridge
 ├── rosbot.sh            # Main control script
 └── requirements.txt     # Python deps
 ```
+
+### Headless sim notes
+
+Gazebo Harmonic's sensors system loads a render engine even in server-only (`-s`) mode. The default is Ogre 1.x (GLX-only) which crashes without an X display. `sim_entrypoint.sh` renames `libgz-rendering-ogre.so` to `.bak` at startup, forcing Ogre2 which supports EGL and runs headless on NVIDIA GPUs.
+
+The sim also requires ROS2 `/clock` to be bridged from Gazebo's internal clock — without this, `gz_ros2_control` never ticks and the robot doesn't move despite receiving velocity commands.
 
 ### LLM backends
 
@@ -146,9 +182,8 @@ Tool call parsing includes a fallback for models that emit JSON as plain text in
 
 ```bash
 # On a machine with NVIDIA GPU(s)
-# Skip GPU 0 if it's used by another process (e.g. Ollama)
-CUDA_VISIBLE_DEVICES=1,2,4 vllm serve meta-llama/Llama-3.3-70B-Instruct \
-  --tensor-parallel-size 3 \
+vllm serve meta-llama/Llama-3.3-70B-Instruct \
+  --tensor-parallel-size 4 \
   --dtype bfloat16 \
   --port 8001 \
   --enable-auto-tool-choice \
@@ -174,20 +209,20 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 ## Connecting from a Phone
 
-The web UI works on any device with a browser on the same network. Navigate to:
+The web UI works on any device with a browser on the same network:
 
 ```
 http://YOUR_SERVER_IP:8082
 ```
 
-Voice input uses the browser's MediaRecorder API — works on Chrome, Safari (iOS 14.3+), and Firefox. Microphone permission is required. Hold the mic button to record, release to send.
+Voice input uses the browser's MediaRecorder API — works on Chrome, Safari (iOS 14.3+), and Firefox. Hold the mic button to record, release to send.
 
 ## Switching to a Different Robot
 
-Any ROS2 robot with rosbridge works. Change two things:
+Any ROS2 robot with rosbridge works:
 
 1. Point `ROSBRIDGE_URL` at your robot's rosbridge instance
-2. If `/cmd_vel` expects `TwistStamped` instead of `Twist`, set `TWIST_STAMPED=true`
+2. If `/cmd_vel` expects `Twist` instead of `TwistStamped`, set `TWIST_STAMPED=false`
 3. Add tools to `server.py` for robot-specific topics/services
 
 ## License
