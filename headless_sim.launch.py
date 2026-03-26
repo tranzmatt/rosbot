@@ -53,7 +53,7 @@ def generate_launch_description():
 
     # gz sim server only (-s = server, -r = run immediately, no GUI)
     gz_server = ExecuteProcess(
-        cmd=["gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", world_sdf],
+        cmd=["gz", "sim", "-s", "-r", "-v", "3", world_sdf],
         output="screen",
     )
 
