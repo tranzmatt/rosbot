@@ -2,7 +2,7 @@
 
 ## Bugs
 
-- [ ] **Voice input disabled** — `faster-whisper` fails to install in `Dockerfile.rosbot`.
+- [x] **Voice input fixed** — `faster-whisper` fails to install in `Dockerfile.rosbot`.
       `docker exec rosbot-rosbot-1 pip list | grep whisper` returns nothing.
       Fix the pip install or switch to `openai-whisper` as fallback.
 
