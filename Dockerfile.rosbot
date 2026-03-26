@@ -1,11 +1,16 @@
-# RosBot server — FastAPI + vLLM client + Whisper
+# RosBot server — FastAPI + Whisper + LLM
 
 FROM python:3.11-slim
 
 WORKDIR /app
 
+# System deps:
+# - ffmpeg: audio decoding for Whisper (converts webm/opus → wav)
+# - libgomp1: OpenMP runtime required by ctranslate2 (faster-whisper backend)
+#   python:3.11-slim strips this out; without it faster-whisper silently fails to load
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
