@@ -29,48 +29,21 @@ else
     echo "[rosbot] WARNING: libgz_ros2_control not found — controllers may fail"
 fi
 
-# The depot.sdf has the Sensors system plugin commented out, so gz-rendering defaults
-# to ogre (1.x / GLX-only) when the robot's camera/LIDAR models trigger it.
-# Fix: patch the world SDF to explicitly enable the Sensors plugin with ogre2,
-# which supports EGL and runs without any X display.
-PATCHED_WORLD="/tmp/${WORLD}_patched.sdf"
-cp "$WORLD_FILE" "$PATCHED_WORLD"
-
-# Uncomment the sensors plugin block and ensure ogre2 is specified
-python3 - "$PATCHED_WORLD" << 'PYEOF'
-import sys, re
-
-path = sys.argv[1]
-with open(path) as f:
-    content = f.read()
-
-# Remove <!-- --> wrapping the Sensors plugin
-content = re.sub(
-    r'<!--\s*(<plugin[^>]*Sensors[^/]*/>\s*(?:<render_engine>.*?</render_engine>\s*)?</plugin>)\s*-->',
-    r'\1',
-    content,
-    flags=re.DOTALL
-)
-
-# If sensors plugin is now present but has no render_engine tag, insert ogre2
-if '<plugin name="gz::sim::systems::Sensors"' in content and '<render_engine>ogre2</render_engine>' not in content:
-    content = content.replace(
-        'filename="gz-sim-sensors-system" />',
-        'filename="gz-sim-sensors-system">\n        <render_engine>ogre2</render_engine>\n    </plugin>'
-    )
-    content = content.replace(
-        'filename="gz-sim-sensors-system"/>',
-        'filename="gz-sim-sensors-system">\n        <render_engine>ogre2</render_engine>\n    </plugin>'
-    )
-
-with open(path, 'w') as f:
-    f.write(content)
-
-print(f"[rosbot] Patched world SDF: sensors system with ogre2")
-PYEOF
-
-echo "[rosbot] Using patched world: $PATCHED_WORLD"
-grep -A3 'Sensors' "$PATCHED_WORLD" | head -8
+# Force Ogre2 by disabling the Ogre 1.x plugin.
+#
+# gz-rendering loads engine plugins alphabetically and "ogre" sorts before "ogre2".
+# The robot's URDF/SDF sensor definitions request "ogre" (1.x) which is GLX-only
+# and crashes without a real X display. Renaming the ogre1 .so forces gz-rendering
+# to fall back to ogre2, which supports EGL and runs headless on NVIDIA GPUs.
+OGRE1_PLUGIN="/opt/ros/jazzy/opt/gz_rendering_vendor/lib/gz-rendering-8/engine-plugins/libgz-rendering-ogre.so"
+OGRE1_BACKUP="${OGRE1_PLUGIN}.bak"
+if [ -f "$OGRE1_PLUGIN" ] && [ ! -f "$OGRE1_BACKUP" ]; then
+    echo "[rosbot] Disabling Ogre 1.x plugin (renaming to .bak) to force Ogre2..."
+    mv "$OGRE1_PLUGIN" "$OGRE1_BACKUP"
+    echo "[rosbot] ✓ Ogre2 is now the only available render engine"
+elif [ -f "$OGRE1_BACKUP" ]; then
+    echo "[rosbot] Ogre 1.x already disabled (backup exists)"
+fi
 
 # Rendering: Ogre2 supports EGL — no X display needed with NVIDIA GPU
 if nvidia-smi &>/dev/null; then
@@ -87,11 +60,9 @@ else
 fi
 
 echo "[rosbot] Launching sim..."
-export ROSBOT_WORLD_SDF="$PATCHED_WORLD"
 ros2 launch /headless_sim.launch.py \
     world:=${WORLD} \
-    model:=${MODEL} \
- &
+    model:=${MODEL} &
 
 LAUNCH_PID=$!
 echo "[rosbot] Waiting for sim to initialize (~35s)..."
