@@ -50,8 +50,10 @@
 - [ ] **`rosbot.sh gui` command** — Currently just prints the gz sim -g connect command.
       Should also check if gz is installed locally and warn if not.
 
-- [ ] **Health check in docker-compose** — Add a healthcheck to the sim service so
+- [x] **Health check in docker-compose** — Add a healthcheck to the sim service so
       rosbot container waits for rosbridge to be ready instead of relying on timing.
+      Healthcheck probes port 9090 via python3 socket; rosbot depends_on condition
+      upgraded from service_started to service_healthy.
 
 - [x] **Ogre1 rename is permanent** — `sim_entrypoint.sh` renames `libgz-rendering-ogre.so`
       to `.bak` inside the container. This persists across restarts (same container).
