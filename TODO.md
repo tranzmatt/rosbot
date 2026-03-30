@@ -47,7 +47,7 @@
 - [x] **`.env.example` GPU section** — Add commented-out examples for `SIM_GPU` and
       `VLLM_GPUS` with instructions for finding UUIDs via `nvidia-smi -L`.
 
-- [ ] **`rosbot.sh gui` command** — Currently just prints the gz sim -g connect command.
+- [x] **`rosbot.sh gui` command** — Currently just prints the gz sim -g connect command.
       Should also check if gz is installed locally and warn if not.
 
 - [x] **Health check in docker-compose** — Add a healthcheck to the sim service so

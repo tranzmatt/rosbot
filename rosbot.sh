@@ -152,6 +152,11 @@ case "$cmd" in
         echo "    export GZ_IP=${DGX_IP}"
         echo "    gz sim -g"
         echo ""
+        if ! command -v gz &>/dev/null; then
+            echo "  WARNING: 'gz' not found on this machine. Install Gazebo Harmonic:"
+            echo "    https://gazebosim.org/docs/harmonic/install"
+            echo ""
+        fi
         echo "  Option 2 — rviz2 for topic visualization (lighter):"
         echo ""
         echo "    export ROS_DOMAIN_ID=0"
