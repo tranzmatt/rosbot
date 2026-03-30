@@ -41,7 +41,7 @@
 - [x] **`get_position` should use sim_ground_truth_pose in sim mode** — `/odom` drifts;
       `/sim_ground_truth_pose` is exact. Auto-detect sim vs real and pick the right topic.
 
-- [ ] **Spawn orientation** — Add `x`, `y`, `yaw` launch args to `headless_sim.launch.py`
+- [x] **Spawn orientation** — Add `x`, `y`, `yaw` launch args to `headless_sim.launch.py`
       so spawn pose is configurable without editing source.
 
 - [x] **`.env.example` GPU section** — Add commented-out examples for `SIM_GPU` and
